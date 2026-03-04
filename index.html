@@ -321,11 +321,13 @@
       return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
           {/* 헤더 */}
-          <header className="bg-white shadow-sm sticky top-0 z-10">
-            <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <BookOpen className="w-6 h-6 text-indigo-600" />
-                <h1 className="text-xl font-bold text-slate-900">하주초등학교 일정표</h1>
+          <header className="bg-white shadow-sm sticky top-0 z-10 border-b border-slate-100">
+            <div className="max-w-[1400px] mx-auto px-6 h-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
+                  <BookOpen className="w-7 h-7 text-white" />
+                </div>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">일정표</span></h1>
               </div>
               {school && (
                 <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
@@ -336,7 +338,7 @@
             </div>
           </header>
 
-          <main className="max-w-4xl mx-auto px-4 py-8 grid md:grid-cols-3 gap-8">
+          <main className="max-w-[1400px] mx-auto px-6 py-10 grid lg:grid-cols-4 lg:gap-10 md:grid-cols-1 gap-8">
 
             {/* 왼쪽: 선택된 날짜의 일정 정보 */}
             <div className="md:col-span-1 space-y-6">
@@ -418,8 +420,8 @@
             </div>
 
             {/* 오른쪽: 월별 달력 */}
-            <div className="md:col-span-2">
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+            <div className="lg:col-span-3">
+              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
                     <CalendarIcon className="w-6 h-6 text-slate-400" />
@@ -630,8 +632,8 @@
             key={d}
             onClick={() => onDayClick(d)}
             className={`
-              relative min-h-[4.5rem] p-2 rounded-xl flex flex-col items-center justify-start transition-all border
-              ${isSelected ? 'border-indigo-500 bg-indigo-50 shadow-sm text-indigo-700' : 'border-transparent hover:bg-slate-50 hover:border-slate-200'}
+              relative min-h-[7.5rem] p-3 rounded-2xl flex flex-col items-center justify-start transition-all border
+              ${isSelected ? 'border-indigo-500 bg-indigo-50/50 shadow-inner text-indigo-700' : 'border-slate-50 hover:bg-slate-50 hover:border-slate-200'}
             `}
           >
             <span className={`
@@ -649,9 +651,9 @@
                   {hasNeis && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
                   {hasCustom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                 </div>
-                <span className={`text-[10px] truncate w-full text-center px-1 hidden sm:block ${hasCustom ? 'text-emerald-600' : 'text-indigo-600'}`}>
+                <span className={`text-[11px] font-medium leading-tight truncate w-full text-center px-1.5 py-1 rounded-lg mt-1 hidden sm:block ${hasCustom ? 'bg-emerald-100/50 text-emerald-700' : 'bg-indigo-100/50 text-indigo-700'}`}>
                   {dayEvents[0].name}
-                  {dayEvents.length > 1 && ` 외 ${dayEvents.length - 1}`}
+                  {dayEvents.length > 1 && <span className="opacity-60 ml-0.5"> 외 {dayEvents.length - 1}</span>}
                 </span>
 
                 {/* 마우스 호버 시 전체 일정 팝업 */}
