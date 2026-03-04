@@ -103,9 +103,22 @@
       const [formData, setFormData] = useState({ name: '', author: '', content: '', startDate: '', endDate: '' });
       const [isSubmitting, setIsSubmitting] = useState(false);
 
-      // ✨ [속도 개선] 분리된 캐시 상태
-      const [gasData, setGasData] = useState([]); // 구글 시트 데이터 (앱 실행시 1번만 로드)
-      const [neisCache, setNeisCache] = useState({}); // 나이스 일정 캐시 (한 번 본 달력은 즉시 렌더링)
+      // ✨ [속도 개선] 분리된 캐시 상태 (LocalStorage 우선 로드)
+      const [gasData, setGasData] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuGasCache');
+          return saved ? JSON.parse(saved) : [];
+        } catch (e) { return []; }
+      });
+
+      const [neisCache, setNeisCache] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuNeisCache');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+      });
+
+      const [isSyncing, setIsSyncing] = useState(false); // 백그라운드 동기화 상태 추가
 
       // (1) 학교 정보 불러오기 (최초 1회만 실행, 이후엔 로컬스토리지 사용)
       useEffect(() => {
@@ -139,12 +152,18 @@
       // (2) 구글 시트(GAS) 데이터 전체 불러오기 (앱 실행 시 단 1회만 비동기로 실행)
       const fetchGasData = async () => {
         if (!GAS_URL || !GAS_URL.startsWith('https://script.google.com')) return;
+        setIsSyncing(true);
         try {
           const res = await fetch(GAS_URL);
           const json = await res.json();
-          if (json.status === 'success' && json.data) setGasData(json.data);
+          if (json.status === 'success' && json.data) {
+            setGasData(json.data);
+            localStorage.setItem('hajuGasCache', JSON.stringify(json.data)); // 로컬 캐시 업데이트
+          }
         } catch (err) {
           console.error("구글 시트 연동 오류:", err);
+        } finally {
+          setIsSyncing(false);
         }
       };
 
@@ -173,7 +192,12 @@
 
             const res = await fetch(neisUrl);
             const data = await res.json();
-            setNeisCache(prev => ({ ...prev, [yearMonth]: data }));
+
+            setNeisCache(prev => {
+              const newState = { ...prev, [yearMonth]: data };
+              localStorage.setItem('hajuNeisCache', JSON.stringify(newState)); // 로컬 캐시 업데이트
+              return newState;
+            });
           } catch (err) {
             console.error(err);
             setError('일정 정보를 불러오는 중 오류가 발생했습니다.');
@@ -330,9 +354,17 @@
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">일정표</span></h1>
               </div>
               {school && (
-                <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
-                  <MapPin className="w-4 h-4 text-indigo-600" />
-                  {school.address}
+                <div className="flex items-center gap-3">
+                  {isSyncing && (
+                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      구 동기화 중...
+                    </div>
+                  )}
+                  <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+                    <MapPin className="w-4 h-4 text-indigo-600" />
+                    {school.address}
+                  </div>
                 </div>
               )}
             </div>
@@ -368,10 +400,10 @@
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
                       <p>학교 정보를 불러오는 중...</p>
                     </div>
-                  ) : loading ? (
+                  ) : (loading && !monthlyEvents[formatDateStr(selectedDate)]) ? (
                     <div className="flex flex-col items-center justify-center py-12 text-slate-400">
                       <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
-                      <p>일정을 통합하는 중...</p>
+                      <p>일정을 불러오는 중...</p>
                     </div>
                   ) : error ? (
                     <div className="flex flex-col items-center justify-center py-10 text-red-400">
