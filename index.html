@@ -227,7 +227,7 @@
               const ymd = formatDateStr(d);
               if (ymd.length === 8 && ymd.startsWith(yearMonth)) {
                 if (!eventsByDate[ymd]) eventsByDate[ymd] = [];
-                eventsByDate[ymd].push({ type: 'custom', name: event.name, author: event.author || '', content: event.content });
+                eventsByDate[ymd].push({ type: 'custom', name: event.name, author: event.author || '', content: event.content, timestamp: event.timestamp });
               }
             }
           }
