@@ -1,117 +1,894 @@
-/**
- * Haju Elementary School Calendar Backend (GAS)
- * Updated to handle extended data fields and monthly sheets.
- */
+<!DOCTYPE html>
+<html lang="ko">
 
-const SPREADSHEET_ID = '1YTd2n5uxMXkiCpRPbMgIO5J69kdl6H-bbKateXL4qIs';
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>하주초등학교 학사 및 출장 달력</title>
 
-function doGet(e) {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('Events') || ss.insertSheet('Events');
-  const data = sheet.getDataRange().getValues();
-  
-  // Skip header row
-  const events = data.slice(1).map(row => ({
-    date: row[0],
-    name: row[1],
-    author: row[2],
-    content: row[3],
-    timestamp: row[4],
-    activity: row[5] || '',
-    target: row[6] || '',
-    location: row[7] || '',
-    manager: row[8] || ''
-  }));
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
 
-  // Fetch Monthly Metadata (Priorities and Recommendations)
-  const metaSheet = ss.getSheetByName('MonthlyMeta') || ss.insertSheet('MonthlyMeta');
-  const metaData = metaSheet.getDataRange().getValues();
-  const monthlyMeta = {};
-  metaData.slice(1).forEach(row => {
-    monthlyMeta[row[0]] = { // key: YYYYMM
-      priorities: row[1] || '',
-      recs: JSON.parse(row[2] || '{}')
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+
+  <!-- Babel (for JSX compilation in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    body {
+      font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, 'Helvetica Neue', 'Segoe UI', 'Apple SD Gothic Neo', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+    }
+
+    /* Hide scrollbar for cleaner UI */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+
+<body class="bg-slate-50 text-slate-800">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ==========================================
+    // API 설정
+    // ==========================================
+    const NEIS_API_KEY = '04f275416e194b508bbd3ad51e42d887';
+
+    // ⭐ [중요] 구글 시트(GAS) 배포 후 얻은 웹 앱 URL을 여기에 붙여넣으세요.
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxxZ32-k6v2YiRUIfgFeWF1sbdfak8argVSJdBqbWqLoP_sbjF5M4bLhfn0CQLrZo-T/exec';
+
+    // ==========================================
+    // SVG 아이콘 컴포넌트
+    // ==========================================
+    const BookOpen = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" /><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" /></svg>;
+    const CalendarIcon = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /></svg>;
+    const ChevronLeft = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6" /></svg>;
+    const ChevronRight = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6" /></svg>;
+    const MapPin = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" /><circle cx="12" cy="10" r="3" /></svg>;
+    const AlertCircle = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" /></svg>;
+    const Loader2 = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>;
+    const Plus = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>;
+    const XIcon = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+
+    // 날짜 포맷 함수 (YYYYMMDD)
+    const formatDateStr = (date) => {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${yyyy}${mm}${dd}`;
     };
-  });
 
-  return ContentService.createTextOutput(JSON.stringify({ 
-    status: 'success', 
-    data: events,
-    monthlyMeta: monthlyMeta
-  })).setMimeType(ContentService.MimeType.JSON);
-}
+    // input type="date"를 위한 포맷 함수 (YYYY-MM-DD)
+    const formatDateInput = (date) => {
+      const yyyy = date.getFullYear();
+      const mm = String(date.getMonth() + 1).padStart(2, '0');
+      const dd = String(date.getDate()).padStart(2, '0');
+      return `${yyyy}-${mm}-${dd}`;
+    };
 
-function doPost(e) {
-  try {
-    const params = JSON.parse(e.postData.contents);
-    const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
-    
-    // Handling Action: Delete
-    if (params.action === 'delete') {
-      const sheet = ss.getSheetByName('Events');
-      const data = sheet.getDataRange().getValues();
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][4] == params.timestamp) { // match by timestamp
-          sheet.deleteRow(i + 1);
-          return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
+    function App() {
+      // 1. 상태 최적화: 학교 정보를 로컬스토리지에 캐싱하여 매번 검색하지 않음
+      const [school, setSchool] = useState(() => {
+        const saved = localStorage.getItem('hajuSchool');
+        return saved ? JSON.parse(saved) : null;
+      });
+
+      const [currentDate, setCurrentDate] = useState(new Date());
+      const [selectedDate, setSelectedDate] = useState(new Date());
+      const [monthlyEvents, setMonthlyEvents] = useState({});
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState('');
+
+      // 모달 및 폼 상태
+      const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+      const [viewEvent, setViewEvent] = useState(null);
+      const [formData, setFormData] = useState({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
+      const [isSubmitting, setIsSubmitting] = useState(false);
+
+      // ✨ [속도 개선] 분리된 캐시 상태 (LocalStorage 우선 로드)
+      const [gasData, setGasData] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuGasCache');
+          return saved ? JSON.parse(saved) : [];
+        } catch (e) { return []; }
+      });
+
+      const [neisCache, setNeisCache] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuNeisCache');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+      });
+
+      const [monthlyMeta, setMonthlyMeta] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuMetaCache');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+      });
+
+      const [isSyncing, setIsSyncing] = useState(false); // 백그라운드 동기화 상태 추가
+
+      // (1) 학교 정보 불러오기 (최초 1회만 실행, 이후엔 로컬스토리지 사용)
+      useEffect(() => {
+        if (school) return;
+        const initHajuSchool = async () => {
+          try {
+            const url = `https://open.neis.go.kr/hub/schoolInfo?KEY=${NEIS_API_KEY}&Type=json&SCHUL_NM=${encodeURIComponent('하주초등학교')}`;
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.schoolInfo && data.schoolInfo[1].row) {
+              const haju = data.schoolInfo[1].row.find(s => s.SCHUL_NM === '하주초등학교');
+              if (haju) {
+                const schoolData = {
+                  officeCode: haju.ATPT_OFCDC_SC_CODE,
+                  schoolCode: haju.SD_SCHUL_CODE,
+                  schoolName: haju.SCHUL_NM,
+                  address: haju.ORG_RDNMA
+                };
+                setSchool(schoolData);
+                localStorage.setItem('hajuSchool', JSON.stringify(schoolData)); // 기기에 정보 캐싱
+              }
+            }
+          } catch (err) {
+            console.error('학교 정보를 불러오는 중 오류 발생:', err);
+          }
+        };
+        initHajuSchool();
+      }, []);
+
+      // (2) 구글 시트(GAS) 데이터 전체 불러오기 (앱 실행 시 단 1회만 비동기로 실행)
+      const fetchGasData = async () => {
+        if (!GAS_URL || !GAS_URL.startsWith('https://script.google.com')) return;
+        setIsSyncing(true);
+        try {
+          const res = await fetch(GAS_URL);
+          const json = await res.json();
+          if (json.status === 'success' && json.data) {
+            setGasData(json.data);
+            localStorage.setItem('hajuGasCache', JSON.stringify(json.data)); // 로컬 캐시 업데이트
+
+            if (json.monthlyMeta) {
+              setMonthlyMeta(json.monthlyMeta);
+              localStorage.setItem('hajuMetaCache', JSON.stringify(json.monthlyMeta));
+            }
+          }
+        } catch (err) {
+          console.error("구글 시트 연동 오류:", err);
+        } finally {
+          setIsSyncing(false);
         }
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: 'Event not found' })).setMimeType(ContentService.MimeType.JSON);
-    }
+      };
 
-    // Handling Action: Update Monthly Meta
-    if (params.action === 'updateMeta') {
-      const sheet = ss.getSheetByName('MonthlyMeta') || ss.insertSheet('MonthlyMeta');
-      if (sheet.getLastRow() === 0) {
-        sheet.appendRow(['Month', 'Priorities', 'Recommendations']);
-      }
-      const data = sheet.getDataRange().getValues();
-      let rowIdx = -1;
-      for (let i = 1; i < data.length; i++) {
-        if (data[i][0] == params.month) {
-          rowIdx = i + 1;
-          break;
+      useEffect(() => {
+        fetchGasData();
+      }, []);
+
+      // (3) 나이스(NEIS) 일정 불러오기 (월 단위, 캐싱 적용)
+      useEffect(() => {
+        if (!school) return;
+
+        const yyyy = currentDate.getFullYear();
+        const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const yearMonth = `${yyyy}${mm}`;
+
+        // ✨ 핵심: 이미 로드된 달의 데이터면 API 호출 안함! (월 이동 속도 대폭 향상)
+        if (neisCache[yearMonth]) return;
+
+        const fetchNeis = async () => {
+          setLoading(true);
+          try {
+            const lastDay = new Date(yyyy, currentDate.getMonth() + 1, 0).getDate();
+            const fromYmd = `${yyyy}${mm}01`;
+            const toYmd = `${yyyy}${mm}${lastDay}`;
+            const neisUrl = `https://open.neis.go.kr/hub/SchoolSchedule?KEY=${NEIS_API_KEY}&Type=json&ATPT_OFCDC_SC_CODE=${school.officeCode}&SD_SCHUL_CODE=${school.schoolCode}&AA_FROM_YMD=${fromYmd}&AA_TO_YMD=${toYmd}&pSize=100`;
+
+            const res = await fetch(neisUrl);
+            const data = await res.json();
+
+            setNeisCache(prev => {
+              const newState = { ...prev, [yearMonth]: data };
+              localStorage.setItem('hajuNeisCache', JSON.stringify(newState)); // 로컬 캐시 업데이트
+              return newState;
+            });
+          } catch (err) {
+            console.error(err);
+            setError('일정 정보를 불러오는 중 오류가 발생했습니다.');
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        fetchNeis();
+      }, [school, currentDate]);
+
+      // (4) NEIS 캐시와 GAS 데이터를 합쳐서 화면에 즉각 렌더링
+      useEffect(() => {
+        const yyyy = currentDate.getFullYear();
+        const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
+        const yearMonth = `${yyyy}${mm}`;
+        const eventsByDate = {};
+
+        // 1. NEIS 데이터 파싱
+        const neisData = neisCache[yearMonth];
+        if (neisData && neisData.SchoolSchedule && neisData.SchoolSchedule[1].row) {
+          neisData.SchoolSchedule[1].row.forEach(event => {
+            const ymd = event.AA_YMD;
+            if (!eventsByDate[ymd]) eventsByDate[ymd] = [];
+            eventsByDate[ymd].push({ type: 'neis', name: event.EVENT_NM, content: event.EVENT_CNTNT || '' });
+          });
         }
-      }
-      
-      const rowData = [params.month, params.priorities, JSON.stringify(params.recs)];
-      if (rowIdx > 0) {
-        sheet.getRange(rowIdx, 1, 1, 3).setValues([rowData]);
-      } else {
-        sheet.appendRow(rowData);
-      }
-      return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
+
+        // 2. GAS 데이터 파싱 (기간 일정 지원)
+        gasData.forEach(event => {
+          const dateRaw = String(event.date).trim();
+          let startStr = '';
+          let endStr = '';
+
+          // 기간 형식(YYYYMMDD-YYYYMMDD)인지 확인
+          if (dateRaw.includes('-')) {
+            const parts = dateRaw.split('-');
+            startStr = parts[0].replace(/[^0-9]/g, '').substring(0, 8);
+            endStr = parts[1].replace(/[^0-9]/g, '').substring(0, 8);
+          } else {
+            startStr = dateRaw.replace(/[^0-9]/g, '').substring(0, 8);
+            endStr = startStr;
+          }
+
+          if (startStr.length === 8 && endStr.length === 8) {
+            const startD = new Date(startStr.substring(0, 4), parseInt(startStr.substring(4, 6)) - 1, startStr.substring(6, 8));
+            const endD = new Date(endStr.substring(0, 4), parseInt(endStr.substring(4, 6)) - 1, endStr.substring(6, 8));
+
+            // 시작일부터 종료일까지 하루씩 반복하며 일정 추가
+            for (let d = new Date(startD); d <= endD; d.setDate(d.getDate() + 1)) {
+              const ymd = formatDateStr(d);
+              if (ymd.length === 8 && ymd.startsWith(yearMonth)) {
+                if (!eventsByDate[ymd]) eventsByDate[ymd] = [];
+                eventsByDate[ymd].push({
+                  type: 'custom',
+                  name: event.name,
+                  author: event.author || '',
+                  content: event.content,
+                  timestamp: event.timestamp,
+                  activity: event.activity || '',
+                  target: event.target || '',
+                  location: event.location || '',
+                  manager: event.manager || ''
+                });
+              }
+            }
+          }
+        });
+
+        setMonthlyEvents(eventsByDate);
+      }, [currentDate, neisCache, gasData]);
+
+      // 일정 추가 제출 핸들러
+      const handleAddSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.activity.trim()) return;
+
+        const startYMD = formData.startDate.replace(/-/g, '');
+        const endYMD = formData.endDate ? formData.endDate.replace(/-/g, '') : startYMD;
+
+        // 시작일이 종료일보다 늦은 경우 예외 처리
+        if (endYMD < startYMD) {
+          alert('종료일은 시작일보다 빠를 수 없습니다.');
+          return;
+        }
+
+        // 하루짜리면 YYYYMMDD, 여러 날이면 YYYYMMDD-YYYYMMDD 형식으로 조합
+        const datePayload = startYMD === endYMD ? startYMD : `${startYMD}-${endYMD}`;
+
+        setIsSubmitting(true);
+        try {
+          const res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              date: datePayload,
+              name: formData.activity, // 행사명을 교육활동명으로 저장
+              content: formData.content,
+              activity: formData.activity,
+              target: formData.target,
+              location: formData.location,
+              manager: formData.manager,
+              timestamp: new Date().getTime() // 고유 ID로 활용
+            })
+          });
+          const result = await res.json();
+          if (result.status === 'success') {
+            setIsAddModalOpen(false);
+            setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
+            fetchGasData(); // 전체 새로고침 대신 백그라운드에서 구글 시트 데이터만 재호출
+          } else {
+            alert('저장 실패: ' + result.message);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('저장 중 오류가 발생했습니다. (웹 앱 URL과 배포 권한을 확인해주세요)');
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      // 일정 삭제 핸들러
+      const handleDelete = async (event) => {
+        if (!confirm('이 일정을 삭제하시겠습니까?')) return;
+
+        setIsSubmitting(true);
+        try {
+          // GAS에 삭제 요청 (POST)
+          const res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'delete',
+              name: event.name,
+              author: event.author,
+              timestamp: event.timestamp // 저장시 생성한 타임스탬프로 식별
+            })
+          });
+          const result = await res.json();
+          if (result.status === 'success') {
+            setViewEvent(null);
+            fetchGasData();
+          } else {
+            alert('삭제 실패: ' + result.message);
+          }
+        } catch (err) {
+          console.error(err);
+          alert('삭제 중 오류가 발생했습니다.');
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+      const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+      const handleDayClick = (day) => setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
+
+      const yearMonth = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      const currentMeta = monthlyMeta[yearMonth] || { priorities: '', recs: {} };
+
+      const handleUpdateMeta = async (field, value) => {
+        const newMeta = { ...currentMeta };
+        if (field === 'priorities') newMeta.priorities = value;
+        else newMeta.recs = { ...newMeta.recs, ...value };
+
+        // Optimistic update
+        setMonthlyMeta(prev => ({ ...prev, [yearMonth]: newMeta }));
+
+        try {
+          await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'updateMeta',
+              month: yearMonth,
+              priorities: newMeta.priorities,
+              recs: newMeta.recs
+            })
+          });
+        } catch (err) { console.error(err); }
+      };
+
+      const downloadPDF = () => {
+        // GAS PDF export trigger
+        alert('PDF 내보내기 기능은 시트 양식이 준비된 후 GAS에서 구현이 필요합니다.');
+      };
+
+      return (
+        <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
+          {/* 헤더 */}
+          <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-slate-100">
+            <div className="max-w-[1400px] mx-auto px-6 h-20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
+                  <BookOpen className="w-7 h-7 text-white" />
+                </div>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">교육계획</span></h1>
+              </div>
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={downloadPDF}
+                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                  월중계획 다운로드 (PDF)
+                </button>
+                {school && (
+                  <div className="flex items-center gap-3">
+                    {isSyncing && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        데이터 동기화 중...
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+                      <MapPin className="w-4 h-4 text-indigo-600" />
+                      {school.address}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-[1400px] mx-auto px-6 py-10 grid lg:grid-cols-4 lg:gap-10 md:grid-cols-1 gap-8">
+
+            {/* 왼쪽: 선택된 날짜의 일정 정보 */}
+            <div className="md:col-span-1 space-y-6">
+              {/* 추진 중점 섹션 */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
+                  <h3 className="font-bold">추진 중점</h3>
+                  <button
+                    onClick={() => {
+                      const val = prompt('추진 중점을 입력하세요 (줄바꿈 가능)', currentMeta.priorities);
+                      if (val !== null) handleUpdateMeta('priorities', val);
+                    }}
+                    className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
+                  >
+                    수정
+                  </button>
+                </div>
+                <div className="p-4 text-sm text-slate-600 whitespace-pre-wrap min-h-[100px]">
+                  {currentMeta.priorities || '추진 중점이 등록되지 않았습니다.'}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-indigo-600 p-6 text-white text-center relative">
+                  <h2 className="text-2xl font-bold">
+                    {selectedDate.getMonth() + 1}월 {selectedDate.getDate()}일
+                  </h2>
+                  <p className="text-indigo-100 mt-1 font-medium">
+                    {['일', '월', '화', '수', '목', '금', '토'][selectedDate.getDay()]}요일
+                  </p>
+                  <button
+                    onClick={() => {
+                      setFormData({
+                        name: '', author: '', content: '', startDate: formatDateInput(selectedDate), endDate: '',
+                        activity: '', target: '', location: '', manager: ''
+                      });
+                      setIsAddModalOpen(true);
+                    }}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors shadow-sm"
+                    title="일정 추가"
+                  >
+                    <Plus className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <div className="p-6">
+                  {!school ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
+                      <p>학교 정보를 불러오는 중...</p>
+                    </div>
+                  ) : (loading && !monthlyEvents[formatDateStr(selectedDate)]) ? (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-400">
+                      <Loader2 className="w-8 h-8 animate-spin text-indigo-500 mb-2" />
+                      <p>일정을 불러오는 중...</p>
+                    </div>
+                  ) : error ? (
+                    <div className="flex flex-col items-center justify-center py-10 text-red-400">
+                      <AlertCircle className="w-10 h-10 mb-2" />
+                      <p className="text-sm">{error}</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {monthlyEvents[formatDateStr(selectedDate)] ? (
+                        monthlyEvents[formatDateStr(selectedDate)].map((event, idx) => {
+                          const isCustom = event.type === 'custom';
+                          return (
+                            <div
+                              key={idx}
+                              onClick={() => isCustom ? setViewEvent(event) : null}
+                              className={`rounded-xl p-4 border transition-all ${isCustom ? 'bg-emerald-50 border-emerald-100 hover:border-emerald-300 hover:shadow-md cursor-pointer' : 'bg-indigo-50 border-indigo-100'}`}
+                            >
+                              <div className="flex items-start gap-3">
+                                <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${isCustom ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
+                                <div className="flex-1 overflow-hidden">
+                                  <div className="flex items-center gap-2">
+                                    <h4 className={`font-bold leading-tight truncate ${isCustom ? 'text-emerald-900' : 'text-indigo-900'}`}>
+                                      {isCustom ? (event.activity || event.name) : event.name}
+                                    </h4>
+                                    {isCustom && event.manager && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded flex-shrink-0">{event.manager}</span>}
+                                  </div>
+
+                                  {isCustom && (
+                                    <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                                      {event.target && <div>대상: {event.target}</div>}
+                                      {event.location && <div>장소: {event.location}</div>}
+                                    </div>
+                                  )}
+
+                                  {!isCustom && event.content && event.content !== event.name && (
+                                    <p className="text-sm text-slate-600 mt-1">{event.content}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className="text-center py-12 text-slate-400">
+                          <BookOpen className="w-12 h-12 mx-auto mb-3 opacity-30 text-slate-400" />
+                          <p>등록된 일정이 없습니다.</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* 오른쪽: 월별 달력 */}
+            <div className="lg:col-span-3 space-y-8">
+              <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
+                    <CalendarIcon className="w-6 h-6 text-slate-400" />
+                    {currentDate.getFullYear()}년 {currentDate.getMonth() + 1}월
+                  </h3>
+                  <div className="flex gap-2">
+                    <button onClick={handlePrevMonth} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => {
+                        setCurrentDate(new Date());
+                        setSelectedDate(new Date());
+                      }}
+                      className="px-4 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-100 rounded-full transition-colors"
+                    >
+                      오늘
+                    </button>
+                    <button onClick={handleNextMonth} className="p-2 hover:bg-slate-100 rounded-full transition-colors text-slate-600">
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
+                    <div key={day} className={`text-center font-semibold text-sm py-2 ${idx === 0 ? 'text-rose-500' : idx === 6 ? 'text-indigo-500' : 'text-slate-500'}`}>
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                <CalendarGrid
+                  currentDate={currentDate}
+                  selectedDate={selectedDate}
+                  onDayClick={handleDayClick}
+                  monthlyEvents={monthlyEvents}
+                />
+              </div>
+
+              {/* 학년별/타부서 추천 업무 섹션 */}
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-100 p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-slate-800">학년별 및 타부서 추천 업무</h3>
+                  <p className="text-sm text-slate-400">클릭하여 내용을 수정할 수 있습니다.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {['1학년', '2학년', '3학년', '4학년', '5학년', '6학년', '타부서 추천'].map(grade => (
+                    <div
+                      key={grade}
+                      onClick={() => {
+                        const val = prompt(`${grade} 추천 업무를 입력하세요`, currentMeta.recs[grade] || '');
+                        if (val !== null) handleUpdateMeta('recs', { [grade]: val });
+                      }}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="text-xs font-bold text-slate-400 mb-2 group-hover:text-indigo-500">{grade}</div>
+                      <div className="text-sm text-slate-700 min-h-[40px]">
+                        {currentMeta.recs[grade] || <span className="text-slate-300">내용 없음</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </main>
+
+          {/* 일정 추가 폼 모달 */}
+          {isAddModalOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
+                <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50">
+                  <h3 className="text-lg font-bold text-slate-800">새 교육활동/행사 추가</h3>
+                  <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                    <XIcon className="w-5 h-5" />
+                  </button>
+                </div>
+                <form onSubmit={handleAddSubmit} className="p-6 space-y-4 overflow-y-auto">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">시작일</label>
+                      <input
+                        type="date"
+                        required
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.startDate}
+                        onChange={e => setFormData({ ...formData, startDate: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">종료일 (선택)</label>
+                      <input
+                        type="date"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.endDate}
+                        onChange={e => setFormData({ ...formData, endDate: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="col-span-1">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">교육활동 (행사명 필수)</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="예: 창의적 체험활동, 학부모 상담 등"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.activity}
+                        onChange={e => setFormData({ ...formData, activity: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">대상</label>
+                      <input
+                        type="text"
+                        placeholder="예: 전교생, 1학년 등"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.target}
+                        onChange={e => setFormData({ ...formData, target: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">장소</label>
+                      <input
+                        type="text"
+                        placeholder="예: 강당, 각 교실 등"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.location}
+                        onChange={e => setFormData({ ...formData, location: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">담당자</label>
+                      <input
+                        type="text"
+                        placeholder="담당자 성함을 입력하세요"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.manager}
+                        onChange={e => setFormData({ ...formData, manager: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">상세 내용</label>
+                    <textarea
+                      rows="3"
+                      placeholder="기타 참고 사항을 입력하세요"
+                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+                      value={formData.content}
+                      onChange={e => setFormData({ ...formData, content: e.target.value })}
+                    ></textarea>
+                  </div>
+
+                  <div className="pt-2 sticky bottom-0 bg-white">
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-emerald-100"
+                    >
+                      {isSubmitting ? '저장 중...' : '일정 등록하기'}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {/* 등록된 일정 상세 보기 모달 */}
+          {viewEvent && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewEvent(null)}>
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-emerald-50 p-6 border-b border-emerald-100 flex justify-between items-start">
+                  <div>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full mb-2 inline-block">상세 일정 정보</span>
+                    <h3 className="text-xl font-bold text-slate-800 leading-tight">{viewEvent.name}</h3>
+                  </div>
+                  <button onClick={() => setViewEvent(null)} className="text-emerald-400 hover:text-emerald-700">
+                    <XIcon className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-6 space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">교육활동</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.activity || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">대상</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.target || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">장소</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.location || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">담당자</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.manager || '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col pt-2 border-t border-slate-100">
+                    <span className="text-xs font-bold text-slate-400 mb-1">상세 내용</span>
+                    <p className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-3 rounded-lg min-h-[60px]">
+                      {viewEvent.content || '등록된 추가 내용이 없습니다.'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="flex flex-col">
+                      {/* 작성자 정보는 제거했으므로 표시하지 않거나 담당자로 대체 */}
+                    </div>
+                  </div>
+
+                  {/* 삭제 버튼 (커스텀 일정인 경우에만 표시) */}
+                  {viewEvent.type === 'custom' && (
+                    <div className="pt-4 border-t border-slate-100 flex gap-2">
+                      <button
+                        onClick={() => handleDelete(viewEvent)}
+                        disabled={isSubmitting}
+                        className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50 text-sm"
+                      >
+                        {isSubmitting ? '처리 중...' : '일정 삭제'}
+                      </button>
+                      <button
+                        onClick={() => setViewEvent(null)}
+                        className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold py-2.5 rounded-xl transition-colors text-sm"
+                      >
+                        닫기
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      );
     }
 
-    // Default: Add/Update Event
-    const sheet = ss.getSheetByName('Events') || ss.insertSheet('Events');
-    if (sheet.getLastRow() === 0) {
-      sheet.appendRow(['Date', 'Name', 'Author', 'Content', 'Timestamp', 'Activity', 'Target', 'Location', 'Manager']);
-    }
-    
-    sheet.appendRow([
-      params.date,
-      params.name,
-      params.author,
-      params.content,
-      params.timestamp,
-      params.activity || '',
-      params.target || '',
-      params.location || '',
-      params.manager || ''
-    ]);
-    
-    return ContentService.createTextOutput(JSON.stringify({ status: 'success' })).setMimeType(ContentService.MimeType.JSON);
-  } catch (err) {
-    return ContentService.createTextOutput(JSON.stringify({ status: 'error', message: err.toString() })).setMimeType(ContentService.MimeType.JSON);
-  }
-}
+    // 달력 그리드 컴포넌트
+    function CalendarGrid({ currentDate, selectedDate, onDayClick, monthlyEvents }) {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth();
 
-/**
- * Triggered by web app to generate PDF based on the current month's layout.
- */
-function generateMonthlyPDF(yearMonth) {
-  // Logic to populate a template sheet and export as PDF
-  // This requires a pre-designed spreadsheet template matching the user's images.
-  // Implementation details would depend on the exact sheet structure.
-}
+      const firstDayOfMonth = new Date(year, month, 1).getDay();
+      const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+      const days = [];
+      // 빈 칸 채우기
+      for (let i = 0; i < firstDayOfMonth; i++) {
+        days.push(<div key={`empty-${i}`} className="p-2"></div>);
+      }
+
+      // 날짜 채우기
+      for (let d = 1; d <= daysInMonth; d++) {
+        const isSelected = selectedDate.getFullYear() === year &&
+          selectedDate.getMonth() === month &&
+          selectedDate.getDate() === d;
+
+        const isToday = new Date().getFullYear() === year &&
+          new Date().getMonth() === month &&
+          new Date().getDate() === d;
+
+        const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(d).padStart(2, '0')}`;
+        const dayEvents = monthlyEvents[dateStr] || [];
+        const dayOfWeek = new Date(year, month, d).getDay();
+        const isSunday = dayOfWeek === 0;
+        const isSaturday = dayOfWeek === 6;
+
+        // "삼일절", "광복절" 등 공휴일 이름이 포함된 경우 빨간색 처리 (NEIS 기반)
+        const hasHoliday = dayEvents.some(e => e.type === 'neis' && (e.name.includes('휴업') || e.name.includes('일절') || e.name.includes('날')));
+        const isRedDay = isSunday || hasHoliday;
+
+        const hasNeis = dayEvents.some(e => e.type === 'neis');
+        const hasCustom = dayEvents.some(e => e.type === 'custom');
+
+        days.push(
+          <button
+            key={d}
+            onClick={() => onDayClick(d)}
+            className={`
+              relative min-h-[7.5rem] p-3 rounded-2xl flex flex-col items-center justify-start transition-all border
+              ${isSelected ? 'border-indigo-500 bg-indigo-50/50 shadow-inner text-indigo-700' : 'border-slate-50 hover:bg-slate-50 hover:border-slate-200'}
+            `}
+          >
+            <span className={`
+              text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full
+              ${isToday && !isSelected ? 'bg-slate-800 text-white' : ''}
+              ${isSelected ? 'bg-indigo-600 text-white' : isRedDay ? 'text-rose-500' : isSaturday ? 'text-indigo-500' : 'text-slate-700'}
+            `}>
+              {d}
+            </span>
+
+            {/* 일정 유무 표시 뱃지 및 텍스트 미리보기 */}
+            {dayEvents.length > 0 && (
+              <div className="mt-1 w-full flex flex-col items-center gap-0.5 group/tooltip relative overflow-hidden">
+                <div className="flex gap-1">
+                  {hasNeis && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
+                  {hasCustom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
+                </div>
+                <span className={`text-[10px] font-bold leading-tight truncate w-full text-center px-1.5 py-1 rounded-lg mt-1 hidden sm:block ${hasCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                  {dayEvents[0].type === 'custom' ? (dayEvents[0].activity || dayEvents[0].name) : dayEvents[0].name}
+                  {dayEvents.length > 1 && <span className="opacity-60 ml-0.5"> +{dayEvents.length - 1}</span>}
+                </span>
+
+                {/* 마우스 호버 시 전체 일정 팝업 */}
+                <div className="invisible group-hover/tooltip:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-800 text-white text-[11px] rounded-lg p-2 shadow-xl z-20 pointer-events-none">
+                  <div className="font-bold border-b border-white/20 pb-1 mb-1">{d}일 전체 일정</div>
+                  <ul className="space-y-1">
+                    {dayEvents.map((ev, i) => (
+                      <li key={i} className="flex items-start gap-1.5 line-clamp-2">
+                        <span className={`w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0 ${ev.type === 'custom' ? 'bg-emerald-400' : 'bg-indigo-400'}`}></span>
+                        <span>{ev.name}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-800"></div>
+                </div>
+              </div>
+            )}
+          </button>
+        );
+      }
+
+      return (
+        <div className="grid grid-cols-7 gap-2">
+          {days}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+
+</html>
