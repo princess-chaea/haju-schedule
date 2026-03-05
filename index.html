@@ -53,7 +53,7 @@
     const NEIS_API_KEY = '04f275416e194b508bbd3ad51e42d887';
 
     // ⭐ [중요] 구글 시트(GAS) 배포 후 얻은 웹 앱 URL을 여기에 붙여넣으세요.
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbz06MYtaRa-iTocUs7QlAJUpSdOz2-9HuJ_98uIBGRRw7zElpq0pwtDdzKeUvLd3HPx/exec';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxxZ32-k6v2YiRUIfgFeWF1sbdfak8argVSJdBqbWqLoP_sbjF5M4bLhfn0CQLrZo-T/exec';
 
     // ==========================================
     // SVG 아이콘 컴포넌트
@@ -100,7 +100,7 @@
       // 모달 및 폼 상태
       const [isAddModalOpen, setIsAddModalOpen] = useState(false);
       const [viewEvent, setViewEvent] = useState(null);
-      const [formData, setFormData] = useState({ name: '', author: '', content: '', startDate: '', endDate: '' });
+      const [formData, setFormData] = useState({ name: '', author: '', content: '', startDate: '', endDate: '', activity: '', target: '', location: '', manager: '' });
       const [isSubmitting, setIsSubmitting] = useState(false);
 
       // ✨ [속도 개선] 분리된 캐시 상태 (LocalStorage 우선 로드)
@@ -114,6 +114,13 @@
       const [neisCache, setNeisCache] = useState(() => {
         try {
           const saved = localStorage.getItem('hajuNeisCache');
+          return saved ? JSON.parse(saved) : {};
+        } catch (e) { return {}; }
+      });
+
+      const [monthlyMeta, setMonthlyMeta] = useState(() => {
+        try {
+          const saved = localStorage.getItem('hajuMetaCache');
           return saved ? JSON.parse(saved) : {};
         } catch (e) { return {}; }
       });
@@ -159,6 +166,11 @@
           if (json.status === 'success' && json.data) {
             setGasData(json.data);
             localStorage.setItem('hajuGasCache', JSON.stringify(json.data)); // 로컬 캐시 업데이트
+
+            if (json.monthlyMeta) {
+              setMonthlyMeta(json.monthlyMeta);
+              localStorage.setItem('hajuMetaCache', JSON.stringify(json.monthlyMeta));
+            }
           }
         } catch (err) {
           console.error("구글 시트 연동 오류:", err);
@@ -251,7 +263,17 @@
               const ymd = formatDateStr(d);
               if (ymd.length === 8 && ymd.startsWith(yearMonth)) {
                 if (!eventsByDate[ymd]) eventsByDate[ymd] = [];
-                eventsByDate[ymd].push({ type: 'custom', name: event.name, author: event.author || '', content: event.content, timestamp: event.timestamp });
+                eventsByDate[ymd].push({
+                  type: 'custom',
+                  name: event.name,
+                  author: event.author || '',
+                  content: event.content,
+                  timestamp: event.timestamp,
+                  activity: event.activity || '',
+                  target: event.target || '',
+                  location: event.location || '',
+                  manager: event.manager || ''
+                });
               }
             }
           }
@@ -287,13 +309,17 @@
               name: formData.name,
               author: formData.author,
               content: formData.content,
+              activity: formData.activity,
+              target: formData.target,
+              location: formData.location,
+              manager: formData.manager,
               timestamp: new Date().getTime() // 고유 ID로 활용
             })
           });
           const result = await res.json();
           if (result.status === 'success') {
             setIsAddModalOpen(false);
-            setFormData({ name: '', author: '', content: '', startDate: '', endDate: '' });
+            setFormData({ name: '', author: '', content: '', startDate: '', endDate: '', activity: '', target: '', location: '', manager: '' });
             fetchGasData(); // 전체 새로고침 대신 백그라운드에서 구글 시트 데이터만 재호출
           } else {
             alert('저장 실패: ' + result.message);
@@ -342,31 +368,70 @@
       const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
       const handleDayClick = (day) => setSelectedDate(new Date(currentDate.getFullYear(), currentDate.getMonth(), day));
 
+      const yearMonth = `${currentDate.getFullYear()}${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
+      const currentMeta = monthlyMeta[yearMonth] || { priorities: '', recs: {} };
+
+      const handleUpdateMeta = async (field, value) => {
+        const newMeta = { ...currentMeta };
+        if (field === 'priorities') newMeta.priorities = value;
+        else newMeta.recs = { ...newMeta.recs, ...value };
+
+        // Optimistic update
+        setMonthlyMeta(prev => ({ ...prev, [yearMonth]: newMeta }));
+
+        try {
+          await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({
+              action: 'updateMeta',
+              month: yearMonth,
+              priorities: newMeta.priorities,
+              recs: newMeta.recs
+            })
+          });
+        } catch (err) { console.error(err); }
+      };
+
+      const downloadPDF = () => {
+        // GAS PDF export trigger
+        alert('PDF 내보내기 기능은 시트 양식이 준비된 후 GAS에서 구현이 필요합니다.');
+      };
+
       return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
           {/* 헤더 */}
-          <header className="bg-white shadow-sm sticky top-0 z-10 border-b border-slate-100">
+          <header className="bg-white shadow-sm sticky top-0 z-20 border-b border-slate-100">
             <div className="max-w-[1400px] mx-auto px-6 h-20 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="bg-indigo-600 p-2.5 rounded-xl shadow-lg shadow-indigo-100">
                   <BookOpen className="w-7 h-7 text-white" />
                 </div>
-                <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">일정표</span></h1>
+                <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">교육계획</span></h1>
               </div>
-              {school && (
-                <div className="flex items-center gap-3">
-                  {isSyncing && (
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      데이터 동기화 중...
+              <div className="flex items-center gap-4">
+                <button
+                  onClick={downloadPDF}
+                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                  월중계획 다운로드 (PDF)
+                </button>
+                {school && (
+                  <div className="flex items-center gap-3">
+                    {isSyncing && (
+                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        데이터 동기화 중...
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
+                      <MapPin className="w-4 h-4 text-indigo-600" />
+                      {school.address}
                     </div>
-                  )}
-                  <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
-                    <MapPin className="w-4 h-4 text-indigo-600" />
-                    {school.address}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </header>
 
@@ -374,6 +439,25 @@
 
             {/* 왼쪽: 선택된 날짜의 일정 정보 */}
             <div className="md:col-span-1 space-y-6">
+              {/* 추진 중점 섹션 */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="bg-slate-800 p-4 text-white flex justify-between items-center">
+                  <h3 className="font-bold">추진 중점</h3>
+                  <button
+                    onClick={() => {
+                      const val = prompt('추진 중점을 입력하세요 (줄바꿈 가능)', currentMeta.priorities);
+                      if (val !== null) handleUpdateMeta('priorities', val);
+                    }}
+                    className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded transition-colors"
+                  >
+                    수정
+                  </button>
+                </div>
+                <div className="p-4 text-sm text-slate-600 whitespace-pre-wrap min-h-[100px]">
+                  {currentMeta.priorities || '추진 중점이 등록되지 않았습니다.'}
+                </div>
+              </div>
+
               <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="bg-indigo-600 p-6 text-white text-center relative">
                   <h2 className="text-2xl font-bold">
@@ -384,7 +468,10 @@
                   </p>
                   <button
                     onClick={() => {
-                      setFormData({ name: '', author: '', content: '', startDate: formatDateInput(selectedDate), endDate: '' });
+                      setFormData({
+                        name: '', author: '', content: '', startDate: formatDateInput(selectedDate), endDate: '',
+                        activity: '', target: '', location: '', manager: ''
+                      });
                       setIsAddModalOpen(true);
                     }}
                     className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/20 hover:bg-white/30 text-white p-2 rounded-full transition-colors shadow-sm"
@@ -423,14 +510,23 @@
                             >
                               <div className="flex items-start gap-3">
                                 <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${isCustom ? 'bg-emerald-500' : 'bg-indigo-500'}`}></div>
-                                <div>
+                                <div className="flex-1 overflow-hidden">
                                   <div className="flex items-center gap-2">
-                                    <h4 className={`font-bold leading-tight ${isCustom ? 'text-emerald-900' : 'text-indigo-900'}`}>
+                                    <h4 className={`font-bold leading-tight truncate ${isCustom ? 'text-emerald-900' : 'text-indigo-900'}`}>
                                       {event.name}
                                     </h4>
-                                    {isCustom && event.author && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded">{event.author}</span>}
+                                    {isCustom && event.author && <span className="text-[10px] font-bold bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded flex-shrink-0">{event.author}</span>}
                                   </div>
-                                  {/* 커스텀 일정은 내용은 숨기고 제목만 표시 (공식 학사일정은 내용 표시) */}
+
+                                  {isCustom && (
+                                    <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-slate-500">
+                                      {event.activity && <div className="col-span-2 text-slate-700 font-medium">활동: {event.activity}</div>}
+                                      {event.target && <div>대상: {event.target}</div>}
+                                      {event.location && <div>장소: {event.location}</div>}
+                                      {event.manager && <div className="col-span-2">담당: {event.manager}</div>}
+                                    </div>
+                                  )}
+
                                   {!isCustom && event.content && event.content !== event.name && (
                                     <p className="text-sm text-slate-600 mt-1">{event.content}</p>
                                   )}
@@ -452,7 +548,7 @@
             </div>
 
             {/* 오른쪽: 월별 달력 */}
-            <div className="lg:col-span-3">
+            <div className="lg:col-span-3 space-y-8">
               <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/50 border border-slate-100 p-8">
                 <div className="flex items-center justify-between mb-6">
                   <h3 className="text-xl font-bold flex items-center gap-2 text-slate-800">
@@ -480,7 +576,7 @@
 
                 <div className="grid grid-cols-7 gap-2 mb-2">
                   {['일', '월', '화', '수', '목', '금', '토'].map((day, idx) => (
-                    <div key={day} className={`text-center font-semibold text-sm py-2 ${idx === 0 ? 'text-red-500' : idx === 6 ? 'text-indigo-500' : 'text-slate-500'}`}>
+                    <div key={day} className={`text-center font-semibold text-sm py-2 ${idx === 0 ? 'text-rose-500' : idx === 6 ? 'text-indigo-500' : 'text-slate-500'}`}>
                       {day}
                     </div>
                   ))}
@@ -493,22 +589,47 @@
                   monthlyEvents={monthlyEvents}
                 />
               </div>
+
+              {/* 학년별/타부서 추천 업무 섹션 */}
+              <div className="bg-white rounded-3xl shadow-lg border border-slate-100 p-8">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="text-xl font-bold text-slate-800">학년별 및 타부서 추천 업무</h3>
+                  <p className="text-sm text-slate-400">클릭하여 내용을 수정할 수 있습니다.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {['1학년', '2학년', '3학년', '4학년', '5학년', '6학년', '타부서 추천'].map(grade => (
+                    <div
+                      key={grade}
+                      onClick={() => {
+                        const val = prompt(`${grade} 추천 업무를 입력하세요`, currentMeta.recs[grade] || '');
+                        if (val !== null) handleUpdateMeta('recs', { [grade]: val });
+                      }}
+                      className="p-4 rounded-xl bg-slate-50 border border-slate-200 hover:border-indigo-300 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="text-xs font-bold text-slate-400 mb-2 group-hover:text-indigo-500">{grade}</div>
+                      <div className="text-sm text-slate-700 min-h-[40px]">
+                        {currentMeta.recs[grade] || <span className="text-slate-300">내용 없음</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </main>
 
           {/* 일정 추가 폼 모달 */}
           {isAddModalOpen && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50">
-                  <h3 className="text-lg font-bold text-slate-800">새 출장/행사 추가</h3>
+                  <h3 className="text-lg font-bold text-slate-800">새 교육활동/행사 추가</h3>
                   <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
                     <XIcon className="w-5 h-5" />
                   </button>
                 </div>
-                <form onSubmit={handleAddSubmit} className="p-5 space-y-4">
-                  <div className="flex gap-4">
-                    <div className="flex-1">
+                <form onSubmit={handleAddSubmit} className="p-6 space-y-4 overflow-y-auto">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1">시작일</label>
                       <input
                         type="date"
@@ -518,7 +639,7 @@
                         onChange={e => setFormData({ ...formData, startDate: e.target.value })}
                       />
                     </div>
-                    <div className="flex-1">
+                    <div>
                       <label className="block text-sm font-semibold text-slate-700 mb-1">종료일 (선택)</label>
                       <input
                         type="date"
@@ -528,43 +649,94 @@
                       />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">제목 (출장/행사명)</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="예: [출장] 도교육청 회의"
-                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      value={formData.name}
-                      onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">행사명</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="예: 입학식"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.name}
+                        onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">교육활동</label>
+                      <input
+                        type="text"
+                        placeholder="예: 진로체험"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.activity}
+                        onChange={e => setFormData({ ...formData, activity: e.target.value })}
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">작성자</label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="이름을 입력하세요"
-                      className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                      value={formData.author}
-                      onChange={e => setFormData({ ...formData, author: e.target.value })}
-                    />
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">대상</label>
+                      <input
+                        type="text"
+                        placeholder="예: 전교생"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.target}
+                        onChange={e => setFormData({ ...formData, target: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">장소</label>
+                      <input
+                        type="text"
+                        placeholder="예: 강당"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.location}
+                        onChange={e => setFormData({ ...formData, location: e.target.value })}
+                      />
+                    </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">담당자</label>
+                      <input
+                        type="text"
+                        placeholder="예: 홍길동"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.manager}
+                        onChange={e => setFormData({ ...formData, manager: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">작성자</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="이름을 입력하세요"
+                        className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        value={formData.author}
+                        onChange={e => setFormData({ ...formData, author: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">상세 내용</label>
                     <textarea
-                      rows="4"
-                      placeholder="장소, 시간 등 상세 내용을 자유롭게 입력하세요"
+                      rows="3"
+                      placeholder="기타 참고 사항을 입력하세요"
                       className="w-full px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
                       value={formData.content}
                       onChange={e => setFormData({ ...formData, content: e.target.value })}
                     ></textarea>
                   </div>
-                  <div className="pt-2">
+
+                  <div className="pt-2 sticky bottom-0 bg-white">
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50"
+                      className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 rounded-xl transition-colors disabled:opacity-50 shadow-lg shadow-emerald-100"
                     >
                       {isSubmitting ? '저장 중...' : '일정 등록하기'}
                     </button>
@@ -577,32 +749,49 @@
           {/* 등록된 일정 상세 보기 모달 */}
           {viewEvent && (
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setViewEvent(null)}>
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
-                <div className="bg-emerald-50 p-5 border-b border-emerald-100 flex justify-between items-start">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden" onClick={e => e.stopPropagation()}>
+                <div className="bg-emerald-50 p-6 border-b border-emerald-100 flex justify-between items-start">
                   <div>
-                    <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full mb-2 inline-block">출장/행사 정보</span>
+                    <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full mb-2 inline-block">상세 일정 정보</span>
                     <h3 className="text-xl font-bold text-slate-800 leading-tight">{viewEvent.name}</h3>
                   </div>
                   <button onClick={() => setViewEvent(null)} className="text-emerald-400 hover:text-emerald-700">
                     <XIcon className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="p-5 space-y-4">
-                  {viewEvent.author && (
+                <div className="p-6 space-y-5">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="flex flex-col">
-                      <span className="text-xs font-bold text-slate-400">작성자</span>
-                      <span className="text-slate-700 font-medium">{viewEvent.author}</span>
+                      <span className="text-xs font-bold text-slate-400 mb-1">교육활동</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.activity || '-'}</span>
                     </div>
-                  )}
-                  {viewEvent.content && (
                     <div className="flex flex-col">
-                      <span className="text-xs font-bold text-slate-400 mb-1">상세 내용</span>
-                      <p className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed">{viewEvent.content}</p>
+                      <span className="text-xs font-bold text-slate-400 mb-1">대상</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.target || '-'}</span>
                     </div>
-                  )}
-                  {!viewEvent.author && !viewEvent.content && (
-                    <p className="text-slate-400 text-sm text-center py-4">등록된 추가 내용이 없습니다.</p>
-                  )}
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">장소</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.location || '-'}</span>
+                    </div>
+                    <div className="flex flex-col">
+                      <span className="text-xs font-bold text-slate-400 mb-1">담당자</span>
+                      <span className="text-slate-800 font-semibold bg-slate-50 p-2 rounded-lg">{viewEvent.manager || '-'}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col pt-2 border-t border-slate-100">
+                    <span className="text-xs font-bold text-slate-400 mb-1">상세 내용</span>
+                    <p className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-3 rounded-lg min-h-[60px]">
+                      {viewEvent.content || '등록된 추가 내용이 없습니다.'}
+                    </p>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] font-bold text-slate-400">작성자</span>
+                      <span className="text-xs text-slate-600 font-medium">{viewEvent.author}</span>
+                    </div>
+                  </div>
 
                   {/* 삭제 버튼 (커스텀 일정인 경우에만 표시) */}
                   {viewEvent.type === 'custom' && (
@@ -656,6 +845,14 @@
 
         const dateStr = `${year}${String(month + 1).padStart(2, '0')}${String(d).padStart(2, '0')}`;
         const dayEvents = monthlyEvents[dateStr] || [];
+        const dayOfWeek = new Date(year, month, d).getDay();
+        const isSunday = dayOfWeek === 0;
+        const isSaturday = dayOfWeek === 6;
+
+        // "삼일절", "광복절" 등 공휴일 이름이 포함된 경우 빨간색 처리 (NEIS 기반)
+        const hasHoliday = dayEvents.some(e => e.type === 'neis' && (e.name.includes('휴업') || e.name.includes('일절') || e.name.includes('날')));
+        const isRedDay = isSunday || hasHoliday;
+
         const hasNeis = dayEvents.some(e => e.type === 'neis');
         const hasCustom = dayEvents.some(e => e.type === 'custom');
 
@@ -671,21 +868,21 @@
             <span className={`
               text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full
               ${isToday && !isSelected ? 'bg-slate-800 text-white' : ''}
-              ${isSelected ? 'bg-indigo-600 text-white' : 'text-slate-700'}
+              ${isSelected ? 'bg-indigo-600 text-white' : isRedDay ? 'text-rose-500' : isSaturday ? 'text-indigo-500' : 'text-slate-700'}
             `}>
               {d}
             </span>
 
             {/* 일정 유무 표시 뱃지 및 텍스트 미리보기 */}
             {dayEvents.length > 0 && (
-              <div className="mt-1 w-full flex flex-col items-center gap-0.5 group/tooltip relative">
+              <div className="mt-1 w-full flex flex-col items-center gap-0.5 group/tooltip relative overflow-hidden">
                 <div className="flex gap-1">
                   {hasNeis && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
                   {hasCustom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                 </div>
-                <span className={`text-[11px] font-medium leading-tight truncate w-full text-center px-1.5 py-1 rounded-lg mt-1 hidden sm:block ${hasCustom ? 'bg-emerald-100/50 text-emerald-700' : 'bg-indigo-100/50 text-indigo-700'}`}>
+                <span className={`text-[10px] font-bold leading-tight truncate w-full text-center px-1.5 py-1 rounded-lg mt-1 hidden sm:block ${hasCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
                   {dayEvents[0].name}
-                  {dayEvents.length > 1 && <span className="opacity-60 ml-0.5"> 외 {dayEvents.length - 1}</span>}
+                  {dayEvents.length > 1 && <span className="opacity-60 ml-0.5"> +{dayEvents.length - 1}</span>}
                 </span>
 
                 {/* 마우스 호버 시 전체 일정 팝업 */}
@@ -720,4 +917,3 @@
 </body>
 
 </html>
-
