@@ -337,15 +337,12 @@
 
         setIsSubmitting(true);
         try {
-          // GAS에 삭제 요청 (POST)
           const res = await fetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
               action: 'delete',
-              name: event.name,
-              author: event.author,
-              timestamp: event.timestamp // 저장시 생성한 타임스탬프로 식별
+              timestamp: event.timestamp
             })
           });
           const result = await res.json();
@@ -392,9 +389,41 @@
         } catch (err) { console.error(err); }
       };
 
-      const downloadPDF = () => {
-        // GAS PDF export trigger
-        alert('PDF 내보내기 기능은 시트 양식이 준비된 후 GAS에서 구현이 필요합니다.');
+      const downloadPDF = async () => {
+        setIsSubmitting(true);
+        try {
+          const yearMonth = currentDate.getFullYear() + String(currentDate.getMonth() + 1).padStart(2, '0');
+          const res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'getPDF', yearMonth: yearMonth })
+          });
+          const result = await res.json();
+          if (result.status === 'success' && result.pdf) {
+            const byteCharacters = atob(result.pdf);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/pdf' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${currentDate.getFullYear()}년_${currentDate.getMonth() + 1}월_교육계획.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          } else {
+            alert('PDF 생성 실패: ' + (result.message || '알 수 없는 오류'));
+          }
+        } catch (err) {
+          console.error(err);
+          alert('PDF 다운로드 중 오류가 발생했습니다.');
+        } finally {
+          setIsSubmitting(false);
+        }
       };
 
       return (
