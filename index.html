@@ -384,8 +384,9 @@
         if (field === 'priorities') newMeta.priorities = value;
         else newMeta.recs = { ...newMeta.recs, ...value };
 
-        // Optimistic update
+        // Optimistic UI updates
         setMonthlyMeta(prev => ({ ...prev, [yearMonth]: newMeta }));
+        setCurrentMeta(newMeta); // 로컬 상태도 즉시 반영하여 모달 저장 후 바로 화면에 보이게 함
 
         try {
           const res = await fetch(GAS_URL, {
@@ -1013,7 +1014,7 @@
           '크리스마스', '성탄절', '공휴일', '대체', '휴업'
         ];
 
-        // 공백 제거 후 키워드 매칭하여 판별력 강화
+        // 공백 제거 후 키워드 매칭하여 판별력 극대화
         const hasHoliday = dayEvents.some(e => {
           const eventName = String(e.name || '').replace(/\s/g, '');
           return holidayKeywords.some(kw => eventName.indexOf(kw) !== -1);
