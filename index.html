@@ -127,6 +127,13 @@
 
       const [isSyncing, setIsSyncing] = useState(false); // 백그라운드 동기화 상태 추가
 
+      // [NEW] 알림/확인 모달 상태
+      const [notification, setNotification] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null });
+
+      const showNotification = (message, type = 'info', title = '', onConfirm = null) => {
+        setNotification({ isOpen: true, type, title, message, onConfirm });
+      };
+
       // (1) 학교 정보 불러오기 (최초 1회만 실행, 이후엔 로컬스토리지 사용)
       useEffect(() => {
         if (school) return;
@@ -298,7 +305,7 @@
 
         // 시작일이 종료일보다 늦은 경우 예외 처리
         if (endYMD < startYMD) {
-          alert('종료일은 시작일보다 빠를 수 없습니다.');
+          showNotification('종료일은 시작일보다 빠를 수 없습니다.', 'error', '날짜 오류');
           return;
         }
 
@@ -326,12 +333,13 @@
             setIsAddModalOpen(false);
             setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
             fetchGasData(); // 전체 새로고침 대신 백그라운드에서 구글 시트 데이터만 재호출
+            showNotification('새 일정이 성공적으로 등록되었습니다.', 'success', '등록 완료');
           } else {
-            alert('저장 실패: ' + result.message);
+            showNotification('저장 실패: ' + result.message, 'error', '저장 오류');
           }
         } catch (err) {
           console.error(err);
-          alert('저장 중 오류가 발생했습니다. (웹 앱 URL과 배포 권한을 확인해주세요)');
+          showNotification('저장 중 오류가 발생했습니다. (웹 앱 URL과 배포 권한을 확인해주세요)', 'error', '연동 오류');
         } finally {
           setIsSubmitting(false);
         }
@@ -339,31 +347,32 @@
 
       // 일정 삭제 핸들러
       const handleDelete = async (event) => {
-        if (!confirm('이 일정을 삭제하시겠습니까?')) return;
-
-        setIsSubmitting(true);
-        try {
-          const res = await fetch(GAS_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({
-              action: 'delete',
-              timestamp: event.timestamp
-            })
-          });
-          const result = await res.json();
-          if (result.status === 'success') {
-            setViewEvent(null);
-            fetchGasData();
-          } else {
-            alert('삭제 실패: ' + result.message);
+        showNotification('이 일정을 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.', 'confirm', '일정 삭제', async () => {
+          setIsSubmitting(true);
+          try {
+            const res = await fetch(GAS_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+              body: JSON.stringify({
+                action: 'delete',
+                timestamp: event.timestamp
+              })
+            });
+            const result = await res.json();
+            if (result.status === 'success') {
+              setViewEvent(null);
+              fetchGasData();
+              showNotification('일정이 삭제되었습니다.', 'success', '삭제 완료');
+            } else {
+              showNotification('삭제 실패: ' + result.message, 'error', '삭제 오류');
+            }
+          } catch (err) {
+            console.error(err);
+            showNotification('삭제 중 오류가 발생했습니다.', 'error', '오류');
+          } finally {
+            setIsSubmitting(false);
           }
-        } catch (err) {
-          console.error(err);
-          alert('삭제 중 오류가 발생했습니다.');
-        } finally {
-          setIsSubmitting(false);
-        }
+        });
       };
 
       const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -401,11 +410,11 @@
           });
           const result = await res.json();
           if (result.status !== 'success') {
-            alert('데이터 저장 실패: ' + result.message);
+            showNotification('데이터 저장 실패: ' + result.message, 'error', '저장 오류');
           }
         } catch (err) {
           console.error(err);
-          alert('서버 연결 오류: 추진 중점이 저장되지 않았을 수 있습니다.');
+          showNotification('서버 연결 오류: 추진 중점이 저장되지 않았을 수 있습니다.', 'error', '저장 오류');
         }
       };
 
@@ -435,13 +444,13 @@
           });
           const result = await res.json();
           if (result.status === 'success') {
-            alert('월중계획 시트가 성공적으로 업데이트되었습니다.');
+            showNotification('월중계획 시트가 성공적으로 업데이트되었습니다. 이제 엑셀/PDF를 다운로드하실 수 있습니다.', 'success', '업데이트 완료');
           } else {
-            alert('시트 업데이트 실패: ' + (result.message || '알 수 없는 오류'));
+            showNotification('시트 업데이트 실패: ' + (result.message || '알 수 없는 오류'), 'error', '동기화 오류');
           }
         } catch (err) {
           console.error(err);
-          alert('시트 업데이트 중 오류가 발생했습니다.');
+          showNotification('시트 업데이트 중 오류가 발생했습니다.', 'error', '오류');
         } finally {
           setIsSubmitting(false);
         }
@@ -474,11 +483,11 @@
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
           } else {
-            alert('PDF 생성 실패: ' + (result.message || '알 수 없는 오류'));
+            showNotification('PDF 생성 실패: ' + (result.message || '알 수 없는 오류'), 'error', '다운로드 오류');
           }
         } catch (err) {
           console.error(err);
-          alert('PDF 다운로드 중 오류가 발생했습니다.');
+          showNotification('PDF 다운로드 중 오류가 발생했습니다.', 'error', '오류');
         } finally {
           setIsSubmitting(false);
         }
@@ -511,11 +520,11 @@
             document.body.removeChild(link);
             window.URL.revokeObjectURL(url);
           } else {
-            alert('Excel 생성 실패: ' + (result.message || '알 수 없는 오류'));
+            showNotification('Excel 생성 실패: ' + (result.message || '알 수 없는 오류'), 'error', '다운로드 오류');
           }
         } catch (err) {
           console.error(err);
-          alert('Excel 다운로드 중 오류가 발생했습니다.');
+          showNotification('Excel 다운로드 중 오류가 발생했습니다.', 'error', '오류');
         } finally {
           setIsSubmitting(false);
         }
@@ -973,6 +982,51 @@
               </div>
             </div>
           )}
+
+          {/* 알림/확인 공통 모달 */}
+          {notification.isOpen && (
+            <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+              <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
+                <div className="p-6 text-center">
+                  <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${notification.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
+                      notification.type === 'error' ? 'bg-rose-100 text-rose-600' :
+                        notification.type === 'confirm' ? 'bg-amber-100 text-amber-600' :
+                          'bg-indigo-100 text-indigo-600'
+                    }`}>
+                    {notification.type === 'success' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                    {notification.type === 'error' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="12"></line></svg>}
+                    {notification.type === 'confirm' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>}
+                    {notification.type === 'info' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>}
+                  </div>
+                  <h4 className="text-xl font-bold text-slate-800 mb-2">{notification.title || (notification.type === 'error' ? '오류' : '알림')}</h4>
+                  <p className="text-slate-600 leading-relaxed text-sm whitespace-pre-wrap">{notification.message}</p>
+                </div>
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex gap-2">
+                  {notification.type === 'confirm' && (
+                    <button
+                      onClick={() => setNotification({ ...notification, isOpen: false })}
+                      className="flex-1 px-4 py-2.5 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-50 transition-colors"
+                    >
+                      취소
+                    </button>
+                  )}
+                  <button
+                    onClick={() => {
+                      if (notification.onConfirm) notification.onConfirm();
+                      setNotification({ ...notification, isOpen: false });
+                    }}
+                    className={`flex-1 px-4 py-2.5 text-white font-bold rounded-xl transition-colors shadow-lg ${notification.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100' :
+                        notification.type === 'error' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-100' :
+                          notification.type === 'confirm' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' :
+                            'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                      }`}
+                  >
+                    확인
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     }
@@ -1014,13 +1068,12 @@
           '크리스마스', '성탄절', '공휴일', '대체', '휴업'
         ];
 
-        // 공백 제거 후 키워드 매칭하여 판별력 극대화
+        // 공백 제거 후 '명칭(name)'에서 키워드 매칭하여 판별 (교육활동 제외 로직으로 롤백)
         const hasHoliday = dayEvents.some(e => {
           const eventName = String(e.name || '').replace(/\s/g, '');
           return holidayKeywords.some(kw => eventName.indexOf(kw) !== -1);
         });
         const isRedDay = isSunday || hasHoliday;
-
         const hasNeis = dayEvents.some(e => e.type === 'neis');
         const hasCustom = dayEvents.some(e => e.type === 'custom');
 
