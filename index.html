@@ -53,7 +53,7 @@
     const NEIS_API_KEY = '04f275416e194b508bbd3ad51e42d887';
 
     // ⭐ [중요] 구글 시트(GAS) 배포 후 얻은 웹 앱 URL을 여기에 붙여넣으세요.
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbzN2uN7deWfccZvstI4xnJPSawizhB-25QfkGmBTsvQsjISdkc3ToBNt4s3Z6ZuUTKD/exec';
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycby5Mn2AxkcUC5pLKEf3-m038cwzULScbca_IgajXvwjtaxanUS19pPZZTN0JVs5yrN_/exec';
 
     // ==========================================
     // SVG 아이콘 컴포넌트
@@ -456,6 +456,43 @@
         }
       };
 
+      const downloadExcel = async () => {
+        setIsSubmitting(true);
+        try {
+          const yearMonth = currentDate.getFullYear() + String(currentDate.getMonth() + 1).padStart(2, '0');
+          const res = await fetch(GAS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify({ action: 'getExcel', yearMonth: yearMonth })
+          });
+          const result = await res.json();
+          if (result.status === 'success' && result.excel) {
+            const byteCharacters = atob(result.excel);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `${currentDate.getFullYear()}년_${currentDate.getMonth() + 1}월_교육계획.xlsx`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+          } else {
+            alert('Excel 생성 실패: ' + (result.message || '알 수 없는 오류'));
+          }
+        } catch (err) {
+          console.error(err);
+          alert('Excel 다운로드 중 오류가 발생했습니다.');
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
       return (
         <div className="min-h-screen bg-slate-50 text-slate-800 font-sans">
           {/* 헤더 */}
@@ -479,10 +516,18 @@
                 <button
                   onClick={downloadPDF}
                   disabled={isSubmitting}
-                  className="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
                 >
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                  월중계획 다운로드 (PDF)
+                  월중계획 (PDF)
+                </button>
+                <button
+                  onClick={downloadExcel}
+                  disabled={isSubmitting}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                  월중계획 (Excel)
                 </button>
                 {school && (
                   <div className="flex items-center gap-3">
