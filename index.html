@@ -374,6 +374,11 @@
       const [currentMeta, setCurrentMeta] = React.useState(monthlyMeta[yearMonth] || { priorities: '', recs: {} });
       const [editModal, setEditModal] = React.useState({ isOpen: false, type: '', key: '', value: '' }); // 커스텀 모달 상태
 
+      // 월이 변경되거나 전체 데이터가 갱신됐을 때 로컬 상태(currentMeta)를 동기화
+      React.useEffect(() => {
+        setCurrentMeta(monthlyMeta[yearMonth] || { priorities: '', recs: {} });
+      }, [yearMonth, monthlyMeta]);
+
       const handleUpdateMeta = async (field, value) => {
         const newMeta = { ...currentMeta };
         if (field === 'priorities') newMeta.priorities = value;
@@ -1007,9 +1012,12 @@
           '선거', '현충일', '제헌절', '광복절', '추석', '개천절', '한글날',
           '크리스마스', '성탄절', '공휴일', '대체', '휴업'
         ];
-        const hasHoliday = dayEvents.some(e =>
-          holidayKeywords.some(kw => e.name.includes(kw))
-        );
+
+        // 공백 제거 후 키워드 매칭하여 판별력 강화
+        const hasHoliday = dayEvents.some(e => {
+          const eventName = String(e.name || '').replace(/\s/g, '');
+          return holidayKeywords.some(kw => eventName.indexOf(kw) !== -1);
+        });
         const isRedDay = isSunday || hasHoliday;
 
         const hasNeis = dayEvents.some(e => e.type === 'neis');
