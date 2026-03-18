@@ -198,8 +198,9 @@
         const mm = String(currentDate.getMonth() + 1).padStart(2, '0');
         const yearMonth = `${yyyy}${mm}`;
 
-        // ✨ 핵심: 이미 로드된 달의 데이터면 API 호출 안함! (월 이동 속도 대폭 향상)
-        if (neisCache[yearMonth]) return;
+        // ✨ 핵심: 이미 로드된 달의 정상 데이터면 API 호출 안함! (월 이동 속도 향상)
+        // INFO-200 처럼 "데이터 없음"이 캐시된 경우, 나중에 등록된 일정이 영영 안 보일 수 있으므로 SchoolSchedule 배열이 있을 때만 캐시를 인정합니다.
+        if (neisCache[yearMonth] && neisCache[yearMonth].SchoolSchedule) return;
 
         const fetchNeis = async () => {
           setLoading(true);
@@ -242,7 +243,14 @@
           let startStr = '';
           let endStr = '';
 
-          if (dateRaw.includes('-')) {
+          if (dateRaw.includes('T') || dateRaw.match(/^[a-zA-Z]{3} /)) {
+            // "2026-03-01T15:00:00.000Z" 또는 "Sun Mar 01 2026..." 기본 객체 처리
+            const parsed = new Date(dateRaw);
+            if (!isNaN(parsed.getTime())) {
+              startStr = formatDateStr(parsed);
+              endStr = startStr;
+            }
+          } else if (dateRaw.includes('-')) {
             const parts = dateRaw.split('-');
             startStr = parts[0].replace(/[^0-9]/g, '').substring(0, 8);
             endStr = parts[1].replace(/[^0-9]/g, '').substring(0, 8);
