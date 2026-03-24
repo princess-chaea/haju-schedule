@@ -43,9 +43,12 @@
     .no-scrollbar::-webkit-scrollbar {
       display: none;
     }
+
     .no-scrollbar {
-      -ms-overflow-style: none;  /* IE and Edge */
-      scrollbar-width: none;  /* Firefox */
+      -ms-overflow-style: none;
+      /* IE and Edge */
+      scrollbar-width: none;
+      /* Firefox */
     }
   </style>
 </head>
@@ -345,7 +348,7 @@
         setGasData(prev => [...prev, newEvent]);
         setIsAddModalOpen(false);
         setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
-        showNotification('일정이 등록되었습니다. (서버 저장 중...)', 'success', '등록 완료');
+        showNotification('일정이 등록되었습니다.', 'success', '등록 완료');
         // ----------------------------
 
         try {
@@ -432,7 +435,7 @@
         // Optimistic UI updates
         setMonthlyMeta(prev => ({ ...prev, [yearMonth]: newMeta }));
         setCurrentMeta(newMeta); // 로컬 상태도 즉시 반영하여 모달 저장 후 바로 화면에 보이게 함
-        showNotification('변경 사항이 반영되었습니다. (서버 저장 중...)', 'success', '수정 완료');
+        showNotification('변경 사항이 반영되었습니다.', 'success', '수정 완료');
 
         try {
           const res = await fetch(GAS_URL, {
@@ -578,48 +581,43 @@
                 </div>
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">교육계획</span></h1>
               </div>
-              <div className="flex flex-col items-end gap-1">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={syncMonthlySheet}
-                    disabled={isSubmitting}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
-                    시트 업데이트
-                  </button>
-                  <button
-                    onClick={downloadPDF}
-                    disabled={isSubmitting}
-                    className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                    월중계획 (PDF)
-                  </button>
-                  <button
-                    onClick={downloadExcel}
-                    disabled={isSubmitting}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                  >
-                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                    월중계획 (Excel)
-                  </button>
+              <div className="flex items-center gap-6">
+                <div className="flex flex-col items-end gap-1">
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={syncMonthlySheet}
+                      disabled={isSubmitting}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
+                      시트 업데이트
+                    </button>
+                    <button
+                      onClick={downloadPDF}
+                      disabled={isSubmitting}
+                      className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                      월중계획 (PDF)
+                    </button>
+                    <button
+                      onClick={downloadExcel}
+                      disabled={isSubmitting}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                    >
+                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                      월중계획 (Excel)
+                    </button>
+                  </div>
+                  <div className="text-[11px] text-slate-400 font-medium">
+                    💡 월중계획을 다운받기 전에 꼭 <span className="text-indigo-500 font-bold">시트 업데이트</span>를 먼저 눌러주세요.
+                  </div>
                 </div>
-                <div className="text-[11px] text-slate-400 font-medium">
-                  💡 월중계획을 다운받기 전에 꼭 <span className="text-indigo-500 font-bold">시트 업데이트</span>를 먼저 눌러주세요.
-                </div>
+
                 {school && (
-                  <div className="flex items-center gap-3 mt-1">
-                    {isSyncing && (
-                      <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        데이터 동기화 중...
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full">
-                      <MapPin className="w-4 h-4 text-indigo-600" />
-                      {school.address}
-                    </div>
+                  <div className="flex items-center gap-1 text-sm font-medium text-slate-600 bg-slate-100 px-3 py-1.5 rounded-full whitespace-nowrap">
+                    <MapPin className="w-4 h-4 text-indigo-600" />
+                    {school.address}
                   </div>
                 )}
               </div>
@@ -1031,9 +1029,9 @@
               <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in fade-in zoom-in duration-200">
                 <div className="p-6 text-center">
                   <div className={`w-16 h-16 rounded-full mx-auto mb-4 flex items-center justify-center ${notification.type === 'success' ? 'bg-emerald-100 text-emerald-600' :
-                      notification.type === 'error' ? 'bg-rose-100 text-rose-600' :
-                        notification.type === 'confirm' ? 'bg-amber-100 text-amber-600' :
-                          'bg-indigo-100 text-indigo-600'
+                    notification.type === 'error' ? 'bg-rose-100 text-rose-600' :
+                      notification.type === 'confirm' ? 'bg-amber-100 text-amber-600' :
+                        'bg-indigo-100 text-indigo-600'
                     }`}>
                     {notification.type === 'success' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"></polyline></svg>}
                     {notification.type === 'error' && <svg className="w-8 h-8" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="12"></line></svg>}
@@ -1058,9 +1056,9 @@
                       setNotification({ ...notification, isOpen: false });
                     }}
                     className={`flex-1 px-4 py-2.5 text-white font-bold rounded-xl transition-colors shadow-lg ${notification.type === 'success' ? 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-100' :
-                        notification.type === 'error' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-100' :
-                          notification.type === 'confirm' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' :
-                            'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
+                      notification.type === 'error' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-100' :
+                        notification.type === 'confirm' ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-100' :
+                          'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-100'
                       }`}
                   >
                     확인
@@ -1143,9 +1141,9 @@
                   {hasNeis && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
                   {hasCustom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                 </div>
-                
+
                 {dayEvents.map((ev, i) => (
-                  <span 
+                  <span
                     key={i}
                     className={`text-[10px] font-bold leading-tight truncate w-full text-center px-1 py-1 rounded-md hidden sm:block ${ev.type === 'custom' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}
                   >
