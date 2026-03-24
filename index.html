@@ -38,6 +38,15 @@
     ::-webkit-scrollbar-thumb:hover {
       background: #94a3b8;
     }
+
+    /* Hide scrollbar for specific elements */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;  /* IE and Edge */
+      scrollbar-width: none;  /* Firefox */
+    }
   </style>
 </head>
 
@@ -311,52 +320,73 @@
         const startYMD = formData.startDate.replace(/-/g, '');
         const endYMD = formData.endDate ? formData.endDate.replace(/-/g, '') : startYMD;
 
-        // 시작일이 종료일보다 늦은 경우 예외 처리
         if (endYMD < startYMD) {
           showNotification('종료일은 시작일보다 빠를 수 없습니다.', 'error', '날짜 오류');
           return;
         }
 
-        // 하루짜리면 YYYYMMDD, 여러 날이면 YYYYMMDD-YYYYMMDD 형식으로 조합
         const datePayload = startYMD === endYMD ? startYMD : `${startYMD}-${endYMD}`;
+        const timestamp = new Date().getTime();
 
-        setIsSubmitting(true);
+        // --- Optimistic UI Update ---
+        const newEvent = {
+          date: datePayload,
+          name: formData.activity,
+          author: '사용자', // 임시 표시용
+          content: formData.content,
+          activity: formData.activity,
+          target: formData.target,
+          location: formData.location,
+          manager: formData.manager,
+          timestamp: timestamp
+        };
+
+        const oldGasData = [...gasData];
+        setGasData(prev => [...prev, newEvent]);
+        setIsAddModalOpen(false);
+        setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
+        showNotification('일정이 등록되었습니다. (서버 저장 중...)', 'success', '등록 완료');
+        // ----------------------------
+
         try {
           const res = await fetch(GAS_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
               date: datePayload,
-              name: formData.activity, // 행사명을 교육활동명으로 저장
+              name: formData.activity,
               content: formData.content,
               activity: formData.activity,
               target: formData.target,
               location: formData.location,
               manager: formData.manager,
-              timestamp: new Date().getTime() // 고유 ID로 활용
+              timestamp: timestamp
             })
           });
           const result = await res.json();
-          if (result.status === 'success') {
-            setIsAddModalOpen(false);
-            setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
-            fetchGasData(); // 전체 새로고침 대신 백그라운드에서 구글 시트 데이터만 재호출
-            showNotification('새 일정이 성공적으로 등록되었습니다.', 'success', '등록 완료');
-          } else {
+          if (result.status !== 'success') {
+            setGasData(oldGasData); // 롤백
             showNotification('저장 실패: ' + result.message, 'error', '저장 오류');
+          } else {
+            // 성공 시 실제 서버 데이터로 동기화 (선택 사항, 여기선 fetchGasData 호출)
+            fetchGasData();
           }
         } catch (err) {
           console.error(err);
-          showNotification('저장 중 오류가 발생했습니다. (웹 앱 URL과 배포 권한을 확인해주세요)', 'error', '연동 오류');
-        } finally {
-          setIsSubmitting(false);
+          setGasData(oldGasData); // 롤백
+          showNotification('저장 중 오류가 발생했습니다.', 'error', '연동 오류');
         }
       };
 
       // 일정 삭제 핸들러
       const handleDelete = async (event) => {
         showNotification('이 일정을 삭제하시겠습니까? 관련 데이터가 모두 삭제됩니다.', 'confirm', '일정 삭제', async () => {
-          setIsSubmitting(true);
+          // --- Optimistic UI Update ---
+          const oldGasData = [...gasData];
+          setGasData(prev => prev.filter(e => e.timestamp !== event.timestamp));
+          setViewEvent(null);
+          // ----------------------------
+
           try {
             const res = await fetch(GAS_URL, {
               method: 'POST',
@@ -367,18 +397,16 @@
               })
             });
             const result = await res.json();
-            if (result.status === 'success') {
-              setViewEvent(null);
-              fetchGasData();
-              showNotification('일정이 삭제되었습니다.', 'success', '삭제 완료');
-            } else {
+            if (result.status !== 'success') {
+              setGasData(oldGasData); // 롤백
               showNotification('삭제 실패: ' + result.message, 'error', '삭제 오류');
+            } else {
+              fetchGasData();
             }
           } catch (err) {
             console.error(err);
+            setGasData(oldGasData); // 롤백
             showNotification('삭제 중 오류가 발생했습니다.', 'error', '오류');
-          } finally {
-            setIsSubmitting(false);
           }
         });
       };
@@ -404,6 +432,7 @@
         // Optimistic UI updates
         setMonthlyMeta(prev => ({ ...prev, [yearMonth]: newMeta }));
         setCurrentMeta(newMeta); // 로컬 상태도 즉시 반영하여 모달 저장 후 바로 화면에 보이게 함
+        showNotification('변경 사항이 반영되었습니다. (서버 저장 중...)', 'success', '수정 완료');
 
         try {
           const res = await fetch(GAS_URL, {
@@ -549,33 +578,38 @@
                 </div>
                 <h1 className="text-2xl font-black text-slate-900 tracking-tight">하주초등학교 <span className="text-indigo-600 italic">교육계획</span></h1>
               </div>
-              <div className="flex items-center gap-4">
-                <button
-                  onClick={syncMonthlySheet}
-                  disabled={isSubmitting}
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
-                  시트 업데이트
-                </button>
-                <button
-                  onClick={downloadPDF}
-                  disabled={isSubmitting}
-                  className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                  월중계획 (PDF)
-                </button>
-                <button
-                  onClick={downloadExcel}
-                  disabled={isSubmitting}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
-                  월중계획 (Excel)
-                </button>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={syncMonthlySheet}
+                    disabled={isSubmitting}
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9" /></svg>
+                    시트 업데이트
+                  </button>
+                  <button
+                    onClick={downloadPDF}
+                    disabled={isSubmitting}
+                    className="bg-rose-500 hover:bg-rose-600 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                    월중계획 (PDF)
+                  </button>
+                  <button
+                    onClick={downloadExcel}
+                    disabled={isSubmitting}
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-all shadow-md flex items-center gap-2 disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
+                    월중계획 (Excel)
+                  </button>
+                </div>
+                <div className="text-[11px] text-slate-400 font-medium">
+                  💡 월중계획을 다운받기 전에 꼭 <span className="text-indigo-500 font-bold">시트 업데이트</span>를 먼저 눌러주세요.
+                </div>
                 {school && (
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 mt-1">
                     {isSyncing && (
                       <div className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 text-indigo-500 rounded-full text-xs font-bold animate-pulse border border-indigo-100">
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
@@ -1102,26 +1136,31 @@
               {d}
             </span>
 
-            {/* 일정 유무 표시 뱃지 및 텍스트 미리보기 */}
+            {/* 일정 유무 표시 및 리스트 (스크롤 가능) */}
             {dayEvents.length > 0 && (
-              <div className="mt-1 w-full flex flex-col items-center gap-0.5 group/tooltip relative overflow-hidden">
-                <div className="flex gap-1">
+              <div className="mt-1 w-full overflow-y-auto no-scrollbar max-h-[80px] flex flex-col gap-1 group/tooltip relative">
+                <div className="flex justify-center gap-1 mb-0.5">
                   {hasNeis && <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>}
                   {hasCustom && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>}
                 </div>
-                <span className={`text-[10px] font-bold leading-tight truncate w-full text-center px-1.5 py-1 rounded-lg mt-1 hidden sm:block ${hasCustom ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}>
-                  {dayEvents[0].type === 'custom' ? (dayEvents[0].activity || dayEvents[0].name) : dayEvents[0].name}
-                  {dayEvents.length > 1 && <span className="opacity-60 ml-0.5"> +{dayEvents.length - 1}</span>}
-                </span>
+                
+                {dayEvents.map((ev, i) => (
+                  <span 
+                    key={i}
+                    className={`text-[10px] font-bold leading-tight truncate w-full text-center px-1 py-1 rounded-md hidden sm:block ${ev.type === 'custom' ? 'bg-emerald-100 text-emerald-700' : 'bg-indigo-100 text-indigo-700'}`}
+                  >
+                    {ev.type === 'custom' ? (ev.activity || ev.name) : ev.name}
+                  </span>
+                ))}
 
-                {/* 마우스 호버 시 전체 일정 팝업 */}
+                {/* 마우스 호버 시 전체 일정 팝업 (기존 유지) */}
                 <div className="invisible group-hover/tooltip:visible absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-800 text-white text-[11px] rounded-lg p-2 shadow-xl z-20 pointer-events-none">
                   <div className="font-bold border-b border-white/20 pb-1 mb-1">{d}일 전체 일정</div>
-                  <ul className="space-y-1">
+                  <ul className="space-y-1 text-left">
                     {dayEvents.map((ev, i) => (
-                      <li key={i} className="flex items-start gap-1.5 line-clamp-2">
+                      <li key={i} className="flex items-start gap-1.5">
                         <span className={`w-1.5 h-1.5 rounded-full mt-1 flex-shrink-0 ${ev.type === 'custom' ? 'bg-emerald-400' : 'bg-indigo-400'}`}></span>
-                        <span>{ev.name}</span>
+                        <span className="line-clamp-2">{ev.name}</span>
                       </li>
                     ))}
                   </ul>
