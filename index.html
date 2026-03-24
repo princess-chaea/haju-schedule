@@ -79,6 +79,7 @@
     const Loader2 = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56" /></svg>;
     const Plus = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="M12 5v14" /></svg>;
     const XIcon = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>;
+    const Trash2 = ({ className }) => <svg className={className} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" /></svg>;
 
     // 날짜 포맷 함수 (YYYYMMDD)
     const formatDateStr = (date) => {
@@ -114,6 +115,7 @@
       const [viewEvent, setViewEvent] = useState(null);
       const [formData, setFormData] = useState({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
       const [isSubmitting, setIsSubmitting] = useState(false);
+      const [isEditing, setIsEditing] = useState(false); // 수정 모드 상태
 
       // ✨ [속도 개선] 분리된 캐시 상태 (LocalStorage 우선 로드)
       const [gasData, setGasData] = useState(() => {
@@ -288,7 +290,8 @@
                   activity: event.activity || '',
                   target: event.target || '',
                   location: event.location || '',
-                  manager: event.manager || ''
+                  manager: event.manager || '',
+                  rawDate: event.date // 수정 시 활용할 원본 날짜 데이터 저장
                 };
                 eventsByDate[ymd].push(newEvent);
                 gasEvents.push({ date: ymd, name: event.name });
@@ -315,7 +318,7 @@
         setMonthlyEvents(eventsByDate);
       }, [currentDate, neisCache, gasData]);
 
-      // 일정 추가 제출 핸들러
+      // 일정 추가/수정 제출 핸들러
       const handleAddSubmit = async (e) => {
         e.preventDefault();
         if (!formData.activity.trim()) return;
@@ -329,26 +332,32 @@
         }
 
         const datePayload = startYMD === endYMD ? startYMD : `${startYMD}-${endYMD}`;
-        const timestamp = new Date().getTime();
+        const timestamp = isEditing ? viewEvent.timestamp : new Date().getTime();
 
         // --- Optimistic UI Update ---
         const newEvent = {
           date: datePayload,
           name: formData.activity,
-          author: '사용자', // 임시 표시용
+          author: '사용자',
           content: formData.content,
           activity: formData.activity,
           target: formData.target,
           location: formData.location,
           manager: formData.manager,
-          timestamp: timestamp
+          timestamp: timestamp,
+          rawDate: datePayload
         };
 
         const oldGasData = [...gasData];
-        setGasData(prev => [...prev, newEvent]);
+        if (isEditing) {
+          setGasData(prev => prev.map(ev => ev.timestamp === timestamp ? newEvent : ev));
+        } else {
+          setGasData(prev => [...prev, newEvent]);
+        }
+        
         setIsAddModalOpen(false);
         setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
-        showNotification('일정이 등록되었습니다.', 'success', '등록 완료');
+        showNotification(isEditing ? '일정이 수정되었습니다.' : '일정이 등록되었습니다.', 'success', isEditing ? '수정 완료' : '등록 완료');
         // ----------------------------
 
         try {
@@ -356,6 +365,7 @@
             method: 'POST',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body: JSON.stringify({
+              action: isEditing ? 'update' : undefined,
               date: datePayload,
               name: formData.activity,
               content: formData.content,
@@ -371,14 +381,44 @@
             setGasData(oldGasData); // 롤백
             showNotification('저장 실패: ' + result.message, 'error', '저장 오류');
           } else {
-            // 성공 시 실제 서버 데이터로 동기화 (선택 사항, 여기선 fetchGasData 호출)
             fetchGasData();
           }
         } catch (err) {
           console.error(err);
           setGasData(oldGasData); // 롤백
           showNotification('저장 중 오류가 발생했습니다.', 'error', '연동 오류');
+        } finally {
+          setIsEditing(false);
         }
+      };
+
+      // 일정 수정 로직 시작 핸들러
+      const handleEditClick = (event) => {
+        setIsEditing(true);
+        const dateRaw = String(event.rawDate);
+        let start = '';
+        let end = '';
+
+        if (dateRaw.includes('-')) {
+          const parts = dateRaw.split('-');
+          start = `${parts[0].substring(0, 4)}-${parts[0].substring(4, 6)}-${parts[0].substring(6, 8)}`;
+          end = `${parts[1].substring(0, 4)}-${parts[1].substring(4, 6)}-${parts[1].substring(6, 8)}`;
+        } else {
+          start = `${dateRaw.substring(0, 4)}-${dateRaw.substring(4, 6)}-${dateRaw.substring(6, 8)}`;
+          end = start;
+        }
+
+        setFormData({
+          activity: event.activity || event.name,
+          target: event.target || '',
+          location: event.location || '',
+          manager: event.manager || '',
+          content: event.content || '',
+          startDate: start,
+          endDate: end === start ? '' : end
+        });
+        setIsAddModalOpen(true);
+        setViewEvent(null); // 상세보기 닫기
       };
 
       // 일정 삭제 핸들러
@@ -807,8 +847,8 @@
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
                 <div className="flex justify-between items-center p-5 border-b border-slate-100 bg-slate-50">
-                  <h3 className="text-lg font-bold text-slate-800">새 교육활동/행사 추가</h3>
-                  <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                  <h3 className="text-lg font-bold text-slate-800">{isEditing ? '일정 수정하기' : '새 교육활동/행사 추가'}</h3>
+                  <button onClick={() => { setIsAddModalOpen(false); setIsEditing(false); }} className="text-slate-400 hover:text-slate-600">
                     <XIcon className="w-5 h-5" />
                   </button>
                 </div>
@@ -919,9 +959,20 @@
                     <span className="text-xs font-bold text-emerald-600 bg-emerald-100 px-2 py-1 rounded-full mb-2 inline-block">상세 일정 정보</span>
                     <h3 className="text-xl font-bold text-slate-800 leading-tight">{viewEvent.name}</h3>
                   </div>
-                  <button onClick={() => setViewEvent(null)} className="text-emerald-400 hover:text-emerald-700">
-                    <XIcon className="w-5 h-5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {viewEvent.type === 'custom' && (
+                      <button
+                        onClick={() => handleDelete(viewEvent)}
+                        className="text-slate-400 hover:text-rose-500 p-1 transition-colors"
+                        title="일정 삭제"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button onClick={() => setViewEvent(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                      <XIcon className="w-5 h-5" />
+                    </button>
+                  </div>
                 </div>
                 <div className="p-6 space-y-5">
                   <div className="grid grid-cols-2 gap-4">
@@ -956,15 +1007,14 @@
                     </div>
                   </div>
 
-                  {/* 삭제 버튼 (커스텀 일정인 경우에만 표시) */}
+                  {/* 하단 수정/닫기 버튼 (커스텀 일정인 경우) */}
                   {viewEvent.type === 'custom' && (
                     <div className="pt-4 border-t border-slate-100 flex gap-2">
                       <button
-                        onClick={() => handleDelete(viewEvent)}
-                        disabled={isSubmitting}
-                        className="flex-1 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold py-2.5 rounded-xl transition-colors disabled:opacity-50 text-sm"
+                        onClick={() => handleEditClick(viewEvent)}
+                        className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-xl transition-colors shadow-md text-sm"
                       >
-                        {isSubmitting ? '처리 중...' : '일정 삭제'}
+                        일정 수정
                       </button>
                       <button
                         onClick={() => setViewEvent(null)}
