@@ -113,7 +113,7 @@
       // 모달 및 폼 상태
       const [isAddModalOpen, setIsAddModalOpen] = useState(false);
       const [viewEvent, setViewEvent] = useState(null);
-      const [formData, setFormData] = useState({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
+      const [formData, setFormData] = useState({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '', timestamp: null });
       const [isSubmitting, setIsSubmitting] = useState(false); // 가구 등록/수정 전용
       const [submittingType, setSubmittingType] = useState(null); // 'sync', 'pdf', 'excel'
       const [isEditing, setIsEditing] = useState(false); // 수정 모드 상태
@@ -333,7 +333,7 @@
         }
 
         const datePayload = startYMD === endYMD ? startYMD : `${startYMD}-${endYMD}`;
-        const timestamp = isEditing ? viewEvent.timestamp : new Date().getTime();
+        const timestamp = isEditing ? formData.timestamp : new Date().getTime();
 
         // --- Optimistic UI Update ---
         const newEvent = {
@@ -357,7 +357,7 @@
         }
 
         setIsAddModalOpen(false);
-        setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '' });
+        setFormData({ activity: '', target: '', location: '', manager: '', content: '', startDate: '', endDate: '', timestamp: null });
         showNotification(isEditing ? '일정이 수정되었습니다.' : '일정이 등록되었습니다.', 'success', isEditing ? '수정 완료' : '등록 완료');
         // ----------------------------
 
@@ -416,7 +416,8 @@
           manager: event.manager || '',
           content: event.content || '',
           startDate: start,
-          endDate: end === start ? '' : end
+          endDate: end === start ? '' : end,
+          timestamp: event.timestamp
         });
         setIsAddModalOpen(true);
         setViewEvent(null); // 상세보기 닫기
@@ -711,7 +712,7 @@
                     onClick={() => {
                       setFormData({
                         name: '', author: '', content: '', startDate: formatDateInput(selectedDate), endDate: '',
-                        activity: '', target: '', location: '', manager: ''
+                        activity: '', target: '', location: '', manager: '', timestamp: null
                       });
                       setIsAddModalOpen(true);
                     }}
