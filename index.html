@@ -59,6 +59,32 @@
   <script type="text/babel">
     const { useState, useEffect } = React;
 
+    // URL을 하이퍼링크로 변환하는 헬퍼 함수
+    const linkify = (text) => {
+      if (!text) return text;
+      const urlRegex = /(https?:\/\/[^\s]+)/g;
+      const parts = text.split(urlRegex);
+      return parts.map((part, i) => {
+        if (part.match(urlRegex)) {
+          return (
+            <a 
+              key={i} 
+              href={part} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="text-indigo-600 hover:text-indigo-800 underline decoration-indigo-300 decoration-2 underline-offset-2 transition-colors break-all"
+            >
+              {part}
+            </a>
+          );
+        }
+        return part;
+      });
+    };
+
+
+
+
     // ==========================================
     // API 설정
     // ==========================================
@@ -673,7 +699,7 @@
                   </button>
                 </div>
                 <div className="p-4 text-sm text-slate-600 whitespace-pre-wrap min-h-[100px]">
-                  {currentMeta.priorities || '추진 중점이 등록되지 않았습니다.'}
+                  {linkify(currentMeta.priorities) || '추진 중점이 등록되지 않았습니다.'}
                 </div>
               </div>
 
@@ -824,7 +850,7 @@
                     >
                       <div className="text-xs font-bold text-slate-400 mb-2 group-hover:text-indigo-500">{grade}</div>
                       <div className="text-sm text-slate-700 min-h-[40px]">
-                        {currentMeta.recs[grade] || <span className="text-slate-300">내용 없음</span>}
+                        {linkify(currentMeta.recs[grade]) || <span className="text-slate-300">내용 없음</span>}
                       </div>
                     </div>
                   ))}
@@ -988,7 +1014,7 @@
                   <div className="flex flex-col pt-2 border-t border-slate-100">
                     <span className="text-xs font-bold text-slate-400 mb-1">상세 내용</span>
                     <p className="text-slate-700 whitespace-pre-wrap text-sm leading-relaxed bg-slate-50 p-3 rounded-lg min-h-[60px]">
-                      {viewEvent.content || '등록된 추가 내용이 없습니다.'}
+                      {linkify(viewEvent.content) || '등록된 추가 내용이 없습니다.'}
                     </p>
                   </div>
 
